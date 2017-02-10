@@ -8,7 +8,6 @@ Created on Tue Dec  6 15:03:39 2016
 import numpy as np
 import CDSAXSfunctions as CD
 import CDplot as CDp
-import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import time
 Intensity=np.loadtxt('Defect55_Center_16_Int.txt')
@@ -139,7 +138,132 @@ def MCMC_LAM1(MCMC_List):
         ReSampledMatrix[c,:]=SampledMatrix[i,:]
     return (ReSampledMatrix)
     
-    
+def Uncertainty1T(ReSampledMatrix):
+        Xi = np.zeros([101,2,len(ReSampledMatrix[:,0])])
+        Yi = np.zeros([101,1,len(ReSampledMatrix[:,0])])
+        PopWidth= np.zeros([len(ReSampledMatrix[:,0])])
+        PopHeight=np.zeros([len(ReSampledMatrix[:,0])])
+        TrapHeight=np.zeros([Trapnumber+1,len(ReSampledMatrix[:,0])])
+        for PopNumber in range(len(ReSampledMatrix[:,0])):
+            
+            
+            TPARU=np.zeros([Trapnumber+1,2])
+            TPARU[:,0:2]=np.reshape(ReSampledMatrix[PopNumber,0:(Trapnumber+1)*2],(Trapnumber+1,2))
+           
+            (CoordUnc)= CD.LAM1CoordAssign(TPARU,SLD,Trapnumber,Pitch)
+            
+            
+            for i in np.arange(1,Trapnumber+1,1):
+                TrapHeight[i,PopNumber]=TrapHeight[i-1,PopNumber]+TPARU[i-1,1]
+            
+            for LineNumber in range(1):
+                
+                EffTrapnumber=0
+                #LeftSide
+                X1L = CoordUnc[EffTrapnumber,0,LineNumber]
+                X2L = CoordUnc[EffTrapnumber+1,0,LineNumber]
+                X1R = CoordUnc[EffTrapnumber,1,LineNumber]
+                X2R = CoordUnc[EffTrapnumber+1,1,LineNumber]
+                Y1 = TrapHeight[EffTrapnumber,PopNumber]
+                Y2 = TrapHeight[EffTrapnumber+1,PopNumber]
+                Disc=0
+                for c in np.arange(0,101,1):
+                    
+                    if Disc > Y2 and Disc <TrapHeight[Trapnumber,PopNumber]:
+                        EffTrapnumber=EffTrapnumber+1
+                        
+                        X1L = CoordUnc[EffTrapnumber,0,LineNumber]
+                        X2L = CoordUnc[EffTrapnumber+1,0,LineNumber]
+                        X1R = CoordUnc[EffTrapnumber,1,LineNumber]
+                        X2R = CoordUnc[EffTrapnumber+1,1,LineNumber]
+                        Y1 = TrapHeight[EffTrapnumber,PopNumber]
+                        Y2 = TrapHeight[EffTrapnumber+1,PopNumber]
+                    ML = (Y2-Y1)/(X2L-X1L)
+                    MR=  (Y2-Y1)/(X2R-X1R)
+                    BL = Y1-ML*X1L
+                    BR = Y1-MR*X1R
+                    Xi[c,0,PopNumber]=(Disc-BL)/ML
+                    Xi[c,1,PopNumber]=(Disc-BR)/MR
+                    Yi[c,0,PopNumber]=Disc
+                    Disc=Disc+TrapHeight[Trapnumber,PopNumber]/100
+            Xi[:,:,PopNumber]=Xi[:,:,PopNumber]-(Xi[0,1,PopNumber]-Xi[0,0,PopNumber])/2
+            PopWidth[PopNumber]=Xi[50,1,PopNumber]-Xi[50,0,PopNumber]
+            PopHeight[PopNumber]=Yi[100,0,PopNumber]
+            
+        S=np.std(Xi,2)*1.96
+        Center = np.average(Xi,2)
+        Sy=np.std(Yi,2)*1.96
+        YC=np.average(Yi,2)
+        OuterEdge=Center
+        YInner=YC-Sy
+        YOuter=YC+Sy
+        OuterEdge[:,0]=OuterEdge[:,0]-S[:,0]
+        OuterEdge[:,1]=OuterEdge[:,1]+S[:,1]
+
+        InnerEdge=Center
+        InnerEdge[:,0]=InnerEdge[:,0]+S[:,0]
+        InnerEdge[:,1]=InnerEdge[:,1]-S[:,1]
+
+        LinePlot=np.zeros([2*101,2])
+        InnerPlot=np.zeros([2*101,2])
+        OuterPlot=np.zeros([2*101,2])
+        
+        LinePlot[0:101,0]=Center[:,0]
+        LinePlot[101:202,0]=np.flipud(Center[:,1])
+        LinePlot[0:101,1]=YC[:,0]
+        LinePlot[101:202,1]=np.flipud(YC[:,0])
+        
+        InnerPlot[0:101,0]=InnerEdge[:,0]
+        InnerPlot[101:202,0]=np.flipud(InnerEdge[:,1])
+        InnerPlot[0:101,1]=YInner[:,0]
+        InnerPlot[101:202,1]=np.flipud(YInner[:,0])
+        
+        
+        OuterPlot[0:101,0]=OuterEdge[:,0]
+        OuterPlot[101:202,0]=np.flipud(OuterEdge[:,1])
+        OuterPlot[0:101,1]=YOuter[:,0]
+        OuterPlot[101:202,1]=np.flipud(YOuter[:,0])
+        
+        vi=np.zeros([100,1])
+        vo=np.zeros([100,1])
+        vc=np.zeros([100,1])
+        for l in np.arange(1,1+0.0001,2):
+            for h in np.arange(1,101,1):
+                vi[h-1,l/2]=0.5*(YInner[h,l-1]-YInner[h-1,l-1])*((InnerEdge[h-1,l]-InnerEdge[h-1,l-1])+(InnerEdge[h,l]-InnerEdge[h,l-1]))
+                vo[h-1,l/2]=0.5*(YOuter[h,l-1]-YOuter[h-1,l-1])*((OuterEdge[h-1,l]-OuterEdge[h-1,l-1])+(OuterEdge[h,l]-OuterEdge[h,l-1]))
+                vc[h-1,l/2]=0.5*(YC[h,l-1]-YC[h-1,l-1])*((Center[h-1,l]-Center[h-1,l-1])+(Center[h,l]-Center[h,l-1]))
+        vd=vo-vi
+        vt=np.sum(vd)
+        vct=np.sum(vc)
+        WidthAvg=np.average(PopWidth)
+        HeightAvg=np.average(PopHeight)
+        WidthStd=np.std(PopWidth)
+        HeightStd=np.std(PopHeight)
+        
+        viLower=np.zeros([10,1])
+        voLower=np.zeros([10,1])
+        vcLower=np.zeros([10,1])
+        for l in np.arange(1,1+0.0001,2):
+            for h in np.arange(1,11,1):
+                viLower[h-1,l/2]=0.5*(YInner[h,l-1]-YInner[h-1,l-1])*((InnerEdge[h-1,l]-InnerEdge[h-1,l-1])+(InnerEdge[h,l]-InnerEdge[h,l-1]))
+                voLower[h-1,l/2]=0.5*(YOuter[h,l-1]-YOuter[h-1,l-1])*((OuterEdge[h-1,l]-OuterEdge[h-1,l-1])+(OuterEdge[h,l]-OuterEdge[h,l-1]))
+                vcLower[h-1,l/2]=0.5*(YC[h,l-1]-YC[h-1,l-1])*((Center[h-1,l]-Center[h-1,l-1])+(Center[h,l]-Center[h,l-1]))
+        vdLower=voLower-viLower
+        vtLower=np.sum(vdLower)
+        vctLower=np.sum(vcLower)
+        
+        viUpper=np.zeros([10,1])
+        voUpper=np.zeros([10,1])
+        vcUpper=np.zeros([10,1])
+        for l in np.arange(1,1+0.0001,2):
+            for h in np.arange(91,101,1):
+                viUpper[h-91,l/2]=0.5*(YInner[h,l-1]-YInner[h-1,l-1])*((InnerEdge[h-1,l]-InnerEdge[h-1,l-1])+(InnerEdge[h,l]-InnerEdge[h,l-1]))
+                voUpper[h-91,l/2]=0.5*(YOuter[h,l-1]-YOuter[h-1,l-1])*((OuterEdge[h-1,l]-OuterEdge[h-1,l-1])+(OuterEdge[h,l]-OuterEdge[h,l-1]))
+                vcUpper[h-91,l/2]=0.5*(YC[h,l-1]-YC[h-1,l-1])*((Center[h-1,l]-Center[h-1,l-1])+(Center[h,l]-Center[h,l-1]))
+        vdUpper=voUpper-viUpper
+        vtUpper=np.sum(vdUpper)
+        vctUpper=np.sum(vcUpper)
+        return(vt,vct,vtLower,vctLower,vtUpper,vctUpper,WidthAvg,HeightAvg,WidthStd,HeightStd,LinePlot,InnerPlot,OuterPlot)    
     
 MCMCInitial=MCMCInit_LAM1(FITPAR,FITPARLB,FITPARUB,MCPAR)
 
@@ -156,3 +280,5 @@ if __name__ =='__main__':
     np.save('LAMtest',F) # add savedfilename here
     end_time=time.perf_counter()   
     print(end_time-start_time)    
+    ReSampledMatrix=F[0]
+    (UNCT_Param)=Uncertainty1T(ReSampledMatrix)

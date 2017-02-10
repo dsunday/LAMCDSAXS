@@ -8,9 +8,7 @@ Created on Tue Dec  6 15:03:39 2016
 import numpy as np
 import CDSAXSfunctions as CD
 import CDplot as CDp
-import matplotlib.pyplot as plt
-from multiprocessing import Pool
-import time
+
 Intensity=np.loadtxt('Defect55_Center_16_Int.txt')
 Qx = np.loadtxt('Defect55_Center_16_Qx.txt')
 Qz = np.loadtxt('Defect55_Center_16_Qz.txt')
@@ -43,13 +41,13 @@ CDp.plotLAM1(Coord,Trapnumber,Pitch)
 (FITPAR,FITPARLB,FITPARUB)=CD.PBA_LAM1(TPAR,SPAR,Trapnumber)
 
 MCPAR=np.zeros([7])
-MCPAR[0] = 12 # Chainnumber
+MCPAR[0] = 1 # Chainnumber
 MCPAR[1] = len(FITPAR)
-MCPAR[2] = 100 #stepnumber
-MCPAR[3] = 0 #randomchains
+MCPAR[2] = 1000 #stepnumber
+MCPAR[3] = 1 #randomchains
 MCPAR[4] = 1 # Resampleinterval
-MCPAR[5] = 100 # stepbase
-MCPAR[6] = 100 # steplength
+MCPAR[5] = 20 # stepbase
+MCPAR[6] = 20 # steplength
 
 def SimInt_LAM1(FITPAR):
     TPARs=np.zeros([Trapnumber+1,2])
@@ -137,29 +135,57 @@ def MCMC_LAM1(MCMC_List):
     for i in np.arange(0,len(SampledMatrix[:,1]),MCPAR[4]):
         c=c+1
         ReSampledMatrix[c,:]=SampledMatrix[i,:]
-    return (AcceptanceProbability)
+    return (ReSampledMatrix)
     
     
     
 MCMCInitial=MCMCInit_LAM1(FITPAR,FITPARLB,FITPARUB,MCPAR)
 
-MCMC_List=[0]*int(MCPAR[0])
-for i in range(int(MCPAR[0])):
-    MCMC_List[i]=MCMCInitial[i,:]
+Acceptprob=0;
+while Acceptprob < 0.3 or Acceptprob > 0.4:
+       L = int(MCPAR[1])
+       Stepnumber= int(MCPAR[2])
+        
+       SampledMatrix=np.zeros([Stepnumber,L+1]) 
+       SampledMatrix[0,:]=MCMCInitial[0,:]
+       Move = np.zeros([L+1])
     
-Acceptprob=0
-start_time = time.perf_counter()
-if __name__ =='__main__':  
-    pool = Pool(processes=12)
-    while Acceptprob <0.3 or Acceptprob > 0.4:
-        Accept=pool.map(MCMC_LAM1,MCMC_List)
-        Acceptprob=np.average(Accept)
-        print(Acceptprob,MCPAR[5],MCPAR[6])        
-        if Acceptprob < 0.3:
-            MCPAR[5]=MCPAR[5]+5
-            MCPAR[6]=MCPAR[6]+5
-        if Acceptprob > 0.4:
-            MCPAR[5]=MCPAR[5]-5
-            MCPAR[6]=MCPAR[6]-5
-    end_time=time.perf_counter()   
-    print(end_time-start_time)    
+       ChiPrior = MCMCInitial[0,L]
+       for step in np.arange(1,Stepnumber,1): 
+           Temp = SampledMatrix[step-1,:].copy()
+           for p in range(L-1):
+               StepControl = MCPAR[5]+MCPAR[6]*np.random.random_sample()
+               Move[p] = (FITPARUB[p]-FITPARLB[p])/StepControl*(np.random.random_sample()-0.5) # need out of bounds check
+               Temp[p]=Temp[p]+Move[p]
+               if Temp[p] < FITPARLB[p]:
+                   Temp[p]=FITPARLB[p]+(FITPARUB[p]-FITPARLB[p])/1000
+               elif Temp[p] > FITPARUB[p]:
+                   Temp[p]=FITPARUB[p]-(FITPARUB[p]-FITPARLB[p])/1000
+           (SimPost)=SimInt_LAM1(Temp)
+           ChiPost=np.sum(CD.Misfit(Intensity,SimPost))
+           if ChiPost < ChiPrior:
+               SampledMatrix[step,0:L]=Temp[0:L]
+               SampledMatrix[step,L]=ChiPost
+               ChiPrior=ChiPost
+           
+           else:
+               MoveProb = np.exp(-0.5*np.power(ChiPost-ChiPrior,2))
+               if np.random.random_sample() < MoveProb:
+                   SampledMatrix[step,0:L]=Temp[0:L]
+                   SampledMatrix[step,L]=ChiPost
+                   ChiPrior=ChiPost
+               else:
+                   SampledMatrix[step,:]=SampledMatrix[step-1,:]
+       AcceptanceNumber=0
+       Acceptancetotal=len(SampledMatrix[:,1])
+       for i in np.arange(1,len(SampledMatrix[:,1]),1):
+           if SampledMatrix[i,0] != SampledMatrix[i-1,0]:
+               AcceptanceNumber=AcceptanceNumber+1
+       Acceptprob=AcceptanceNumber/Acceptancetotal
+       print(Acceptprob,MCPAR[5],MCPAR[6])
+       if Acceptprob < 0.3:
+           MCPAR[5]=MCPAR[5]+1
+           MCPAR[6]=MCPAR[6]+1
+       if Acceptprob > 0.4:
+           MCPAR[5]=MCPAR[5]-1
+           MCPAR[6]=MCPAR[6]-1
