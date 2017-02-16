@@ -43,7 +43,7 @@ CDp.plotLAM1(Coord,Trapnumber,Pitch)
 MCPAR=np.zeros([7])
 MCPAR[0] = 1 # Chainnumber
 MCPAR[1] = len(FITPAR)
-MCPAR[2] = 1000 #stepnumber
+MCPAR[2] = 5000 #stepnumber
 MCPAR[3] = 1 #randomchains
 MCPAR[4] = 1 # Resampleinterval
 MCPAR[5] = 20 # stepbase

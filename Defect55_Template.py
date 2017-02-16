@@ -44,11 +44,11 @@ CDp.plotLAM1(Coord,Trapnumber,Pitch)
 MCPAR=np.zeros([7])
 MCPAR[0] = 12 # Chainnumber
 MCPAR[1] = len(FITPAR)
-MCPAR[2] = 10 #stepnumber
+MCPAR[2] = 1000 #stepnumber
 MCPAR[3] = 1 #randomchains
 MCPAR[4] = 1 # Resampleinterval
 MCPAR[5] = 100 # stepbase
-MCPAR[6] = 300 # steplength
+MCPAR[6] = 100 # steplength
 
 def SimInt_LAM1(FITPAR):
     TPARs=np.zeros([Trapnumber+1,2])
@@ -56,11 +56,11 @@ def SimInt_LAM1(FITPAR):
     SPAR=FITPAR[Trapnumber*2+2:Trapnumber*2+5]
     (Coord)= CD.LAM1CoordAssign(TPAR,SLD,Trapnumber,Pitch)
     F1 = CD.FreeFormTrapezoid(Coord[:,:,0],Qx,Qz,Trapnumber) 
-    M=np.power(np.exp(-1*(np.power(Qx,2)+np.power(Qz,2))*np.power(SPAR[0],2)),0.5)
+    
+    return SimIntM=np.power(np.exp(-1*(np.power(Qx,2)+np.power(Qz,2))*np.power(SPAR[0],2)),0.5)
     Formfactor=F1*M
     Formfactor=abs(Formfactor)
     SimInt = np.power(Formfactor,2)*SPAR[1]+SPAR[2]
-    return SimInt
 
 
 
